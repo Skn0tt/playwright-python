@@ -15,7 +15,7 @@ The Python port is hand-written code in `playwright/_impl/`, plus a generator (`
 
 1. introspects the Python `_impl` classes via `inspect`,
 2. emits typed wrapper classes into `playwright/{async,sync}_api/_generated.py`, and
-3. diffs the introspected surface against `playwright/driver/package/api.json` (downloaded inside the new driver wheel).
+3. diffs the introspected surface against `playwright/driver/package/api.json` (built into the new driver from source).
 
 Anything in `api.json` that is missing or differently typed in `_impl/` causes generation to fail. Three resolutions:
 
@@ -52,18 +52,25 @@ There is sometimes no `vX.Y.0` tag for the latest release (the bots cut release 
 - If `python3-venv` is missing system-wide, use `uv venv env` instead, then `uv pip install --python env/bin/python --upgrade pip`. Don't try to `apt install` — sudo is denied in the harness.
 - Always activate the venv before any `pip`, `pytest`, `mypy`, or `pre-commit` invocation.
 
-### 2. Bump the driver and download it
+### 2. Bump the driver and build it from source
 
 ```sh
 # Edit setup.py
 driver_version = "<new>"     # e.g. "1.59.1"
 
 source env/bin/activate
-python -m build --wheel       # downloads the new driver from cdn.playwright.dev
+python -m build --wheel       # clones microsoft/playwright @ v<new> and builds the driver from source
 playwright install chromium   # NOT --with-deps; sudo is denied
 ```
 
-The wheel build prints `Fetching https://cdn.playwright.dev/builds/driver/playwright-<new>-linux.zip` and unpacks the driver under `playwright/driver/package/`. From this point, `playwright/driver/package/api.json` reflects the new release.
+The wheel build clones `microsoft/playwright` at tag `v<new>` into
+`driver/playwright-src`, runs `npm ci && npm run build`, and runs upstream's
+`utils/build/build-playwright-driver.sh` to produce the per-platform driver
+bundles (`driver/playwright-<new>-*.zip`), then unpacks the driver under
+`playwright/driver/package/`. From this point,
+`playwright/driver/package/api.json` reflects the new release. This requires
+**Node.js, npm, git and bash** on PATH; the first build is slow (full upstream
+build + per-platform Node downloads).
 
 ### 3. Identify the commit range
 

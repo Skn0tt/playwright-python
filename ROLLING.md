@@ -12,7 +12,7 @@ pre-commit install
 pip install -e .
 ```
 * change driver version in `setup.py`
-* download new driver: `python -m build --wheel`
+* build the new driver from source: `python -m build --wheel` (clones `microsoft/playwright` at the matching tag and builds it; requires Node.js, npm, git and bash)
 * generate API: `./scripts/update_api.sh`
 * commit changes & send PR
 * wait for bots to pass & merge the PR

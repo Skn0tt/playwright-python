@@ -98,24 +98,19 @@ def extractall(zip: zipfile.ZipFile, path: str) -> None:
             os.chmod(extracted_path, attr)
 
 
-def download_driver(zip_name: str) -> None:
-    zip_file = f"playwright-{driver_version}-{zip_name}.zip"
-    destination_path = "driver/" + zip_file
+def ensure_driver_bundle(zip_name: str) -> None:
+    destination_path = f"driver/playwright-{driver_version}-{zip_name}.zip"
     if os.path.exists(destination_path):
         return
-    url = "https://cdn.playwright.dev/builds/driver/"
-    if (
-        "-alpha" in driver_version
-        or "-beta" in driver_version
-        or "-next" in driver_version
-    ):
-        url = url + "next/"
-    url = url + zip_file
-    temp_destination_path = destination_path + ".tmp"
-    print(f"Fetching {url}")
-    # Don't replace this with urllib - Python won't have certificates to do SSL on all platforms.
-    subprocess.check_call(["curl", url, "-o", temp_destination_path])
-    os.rename(temp_destination_path, destination_path)
+    # Build all platform bundles from source (microsoft/playwright @ the
+    # matching tag) and stage them into driver/. A single invocation produces
+    # every platform's bundle, so subsequent calls hit the early return above.
+    build_script = os.path.join(os.path.dirname(__file__), "scripts", "build_driver.sh")
+    subprocess.check_call(["bash", build_script, driver_version])
+    if not os.path.exists(destination_path):
+        raise RuntimeError(
+            f"Driver bundle {destination_path} was not produced by the source build."
+        )
 
 
 class PlaywrightBDistWheelCommand(BDistWheelCommand):
@@ -152,10 +147,13 @@ class PlaywrightBDistWheelCommand(BDistWheelCommand):
         assert self.dist_dir
         base_wheel_location: str = glob.glob(os.path.join(self.dist_dir, "*.whl"))[0]
         without_platform = base_wheel_location[:-7]
-        download_driver(wheel_bundle["zip_name"])
+        ensure_driver_bundle(wheel_bundle["zip_name"])
         zip_file = f"driver/playwright-{driver_version}-{wheel_bundle['zip_name']}.zip"
+        extract_dir = f"driver/{wheel_bundle['zip_name']}"
+        if os.path.exists(extract_dir):
+            shutil.rmtree(extract_dir)
         with zipfile.ZipFile(zip_file, "r") as zip:
-            extractall(zip, f"driver/{wheel_bundle['zip_name']}")
+            extractall(zip, extract_dir)
         wheel_location = without_platform + wheel_bundle["wheel"]
         shutil.copy(base_wheel_location, wheel_location)
         with zipfile.ZipFile(
@@ -197,8 +195,10 @@ class PlaywrightBDistWheelCommand(BDistWheelCommand):
         )
         assert len(zip_names_for_current_system) == 1
         zip_name = zip_names_for_current_system.pop()
-        download_driver(zip_name)
+        ensure_driver_bundle(zip_name)
         zip_file = f"driver/playwright-{driver_version}-{zip_name}.zip"
+        if os.path.exists("playwright/driver"):
+            shutil.rmtree("playwright/driver")
         with zipfile.ZipFile(zip_file, "r") as zip:
             extractall(zip, "playwright/driver")
 
